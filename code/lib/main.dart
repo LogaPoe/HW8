@@ -1,186 +1,183 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  runApp(const ActivityManagerApp());
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  runApp(const MyApp());
 }
 
-class ActivityManagerApp extends StatelessWidget {
-  const ActivityManagerApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Activity Organizer',
+      title: 'Time Tracker',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+        primarySwatch: Colors.blue,
       ),
-      home: const ActivityDashboard(title: 'Activity Organizer'),
+      home: const TaskScreen(),
     );
   }
 }
 
-class ActivityDashboard extends StatefulWidget {
-  const ActivityDashboard({super.key, required this.title});
-  final String title;
+class TaskScreen extends StatefulWidget {
+  const TaskScreen({super.key});
 
   @override
-  State<ActivityDashboard> createState() => _ActivityDashboardState();
+  _TaskScreenState createState() => _TaskScreenState();
 }
 
-class _ActivityDashboardState extends State<ActivityDashboard> {
-  final TextEditingController _dateController = TextEditingController();
-  final TextEditingController _startController = TextEditingController();
-  final TextEditingController _endController = TextEditingController();
-  final TextEditingController _activityNameController = TextEditingController();
-  final TextEditingController _tagsController = TextEditingController();
+class _TaskScreenState extends State<TaskScreen> {
+  final TextEditingController _taskNameController = TextEditingController();
+  final TextEditingController _taskTagsController = TextEditingController();
+  final TextEditingController _dateInputController = TextEditingController();
+  final TextEditingController _startTimeController = TextEditingController();
+  final TextEditingController _endTimeController = TextEditingController();
 
-  final TextEditingController _searchDateController = TextEditingController();
-  final TextEditingController _searchTagController = TextEditingController();
-  final TextEditingController _searchNameController = TextEditingController();
+  Future<void> addTask() async {
+    final startTime = _startTimeController.text;
+    final endTime = _endTimeController.text;
+    final taskName = _taskNameController.text;
+    final tags = _taskTagsController.text;
+    final date = _dateInputController.text;
 
-  String _feedbackMessage = '';
+    if (taskName.isEmpty || tags.isEmpty || date.isEmpty || startTime.isEmpty || endTime.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill out all fields')),
+      );
+      return;
+    }
 
-  Future<void> _createActivity() async {
     try {
-      await FirebaseFirestore.instance.collection('activities').add({
-        'date': _dateController.text,
-        'startTime': _startController.text,
-        'endTime': _endController.text,
-        'name': _activityNameController.text,
-        'tags': _tagsController.text,
+      await FirebaseFirestore.instance.collection('tasks').add({
+        'date': date,
+        'startTime': startTime,
+        'endTime': endTime,
+        'task': taskName,
+        'tags': tags,
       });
 
-      setState(() {
-        _feedbackMessage = 'Activity added: ${_activityNameController.text}';
-      });
+      _taskNameController.clear();
+      _taskTagsController.clear();
+      _dateInputController.clear();
+      _startTimeController.clear();
+      _endTimeController.clear();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Task added successfully!')),
+      );
     } catch (e) {
-      setState(() {
-        _feedbackMessage = 'Error adding activity: $e';
-      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error adding task: $e')),
+      );
     }
   }
 
-  Future<void> _listActivities() async {
-    try {
-      QuerySnapshot snapshot =
-      await FirebaseFirestore.instance.collection('activities').get();
-      List<QueryDocumentSnapshot> activities = snapshot.docs;
+  Future<void> showReportDialog() async {
+    final TextEditingController startDateController = TextEditingController();
+    final TextEditingController endDateController = TextEditingController();
 
-      _showActivityDialog(activities);
-    } catch (e) {
-      setState(() {
-        _feedbackMessage = 'Unable to retrieve activities: $e';
-      });
-    }
-  }
-
-  void _showActivityDialog(List<QueryDocumentSnapshot> activities) {
-    showDialog(
+    await showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (context) {
         return AlertDialog(
-          title: const Text('All Activities'),
-          content: SingleChildScrollView(
-            child: ListBody(
-              children: activities.map((activity) {
-                Map<String, dynamic> data = activity.data() as Map<String, dynamic>;
-                String activityId = activity.id;
-
-                return ListTile(
-                  title: Text(data['name'] ?? 'Unnamed Activity'),
-                  subtitle: Text(
-                    '${data['date']} from ${data['startTime']} to ${data['endTime']} [Tags: ${data['tags']}]',
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () {
-                      _deleteActivity(activityId);
-                      Navigator.of(context).pop();
-                      _listActivities();
-                    },
-                  ),
-                );
-              }).toList(),
-            ),
+          title: const Text('Generate Report'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: startDateController,
+                decoration: const InputDecoration(labelText: 'Start Date (YYYY-MM-DD)'),
+              ),
+              TextField(
+                controller: endDateController,
+                decoration: const InputDecoration(labelText: 'End Date (YYYY-MM-DD)'),
+              ),
+            ],
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
+              onPressed: () {
+                Navigator.of(context).pop(); // Close the dialog
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop({
+                  'startDate': startDateController.text,
+                  'endDate': endDateController.text,
+                });
+              },
+              child: const Text('Generate'),
             ),
           ],
         );
       },
-    );
+    ).then((dates) async {
+      if (dates != null &&
+          dates['startDate'].isNotEmpty &&
+          dates['endDate'].isNotEmpty) {
+        final startDate = DateTime.parse(dates['startDate']);
+        final endDate = DateTime.parse(dates['endDate']);
+        await generateReport(startDate, endDate);
+      }
+    });
   }
 
-  Future<void> _deleteActivity(String activityId) async {
+  Future<void> generateReport(DateTime startDate, DateTime endDate) async {
     try {
-      await FirebaseFirestore.instance.collection('activities').doc(activityId).delete();
-      setState(() {
-        _feedbackMessage = 'Successfully Deleted';
-      });
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('tasks')
+          .where('date', isGreaterThanOrEqualTo: startDate.toIso8601String())
+          .where('date', isLessThanOrEqualTo: endDate.toIso8601String())
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No tasks found in this date range')),
+        );
+        return;
+      }
+
+      showResultsDialog(querySnapshot.docs);
     } catch (e) {
-      setState(() {
-        _feedbackMessage = 'Unable to delete activity: $e';
-      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error generating report: $e')),
+      );
     }
   }
 
-  Future<void> _searchActivities() async {
-    try {
-      Query query = FirebaseFirestore.instance.collection('activities');
-
-      if (_searchDateController.text.isNotEmpty) {
-        query = query.where('date', isEqualTo: _searchDateController.text);
-      }
-      if (_searchTagController.text.isNotEmpty) {
-        List<String> tags = _searchTagController.text.split(',').map((tag) => tag.trim()).toList();
-        query = query.where('tags', arrayContainsAny: tags);
-      }
-      if (_searchNameController.text.isNotEmpty) {
-        query = query.where('name', isEqualTo: _searchNameController.text);
-      }
-
-      QuerySnapshot snapshot = await query.get();
-      _showSearchResults(snapshot.docs);
-    } catch (e) {
-      setState(() {
-        _feedbackMessage = 'Unable to search activities: $e';
-      });
-    }
-  }
-
-  void _showSearchResults(List<QueryDocumentSnapshot> results) {
-    showDialog(
+  Future<void> showResultsDialog(List<QueryDocumentSnapshot> docs) async {
+    await showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (context) {
         return AlertDialog(
-          title: const Text('Search Results'),
-          content: SingleChildScrollView(
-            child: ListBody(
-              children: results.map((result) {
-                Map<String, dynamic> data = result.data() as Map<String, dynamic>;
+          title: const Text('Report Results'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: docs.length,
+              itemBuilder: (context, index) {
+                final doc = docs[index];
                 return ListTile(
-                  title: Text(data['name'] ?? 'Unnamed Activity'),
+                  title: Text(doc['task']),
                   subtitle: Text(
-                    '${data['date']} from ${data['startTime']} to ${data['endTime']} [Tags: ${data['tags']}]',
-                  ),
+                      'Date: ${doc['date']}\nStart: ${doc['startTime']} - End: ${doc['endTime']}\nTags: ${doc['tags']}'),
                 );
-              }).toList(),
+              },
             ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
               child: const Text('Close'),
             ),
           ],
@@ -192,37 +189,52 @@ class _ActivityDashboardState extends State<ActivityDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(
-        centerTitle: true,
-        title: Text(widget.title),
-    backgroundColor: Theme.of(context).colorScheme.primary,
-    ),
-    body: Center(
-    child: Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-    ElevatedButton(
-    onPressed: _listActivities,
-    child: const Text('Show All Activities'),
-    ),
-    const SizedBox(height: 20),
-    ElevatedButton(
-    onPressed: _createActivity,
-    child: const Text('Add Activity'),
-    ),
-    const SizedBox(height: 20),
-    ElevatedButton(
-    onPressed: _searchActivities,
-    child: const Text('Search Activities'),
-    ),
-    const SizedBox(height: 20),
-    Text(_feedbackMessage),
-    ],
-    ),
-    ),
+      appBar: AppBar(
+        title: const Text('Time Tracker'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: <Widget>[
+            TextField(
+              controller: _taskNameController,
+              decoration: const InputDecoration(labelText: 'Task Name'),
+            ),
+            TextField(
+              controller: _taskTagsController,
+              decoration: const InputDecoration(labelText: 'Tags'),
+            ),
+            TextField(
+              controller: _dateInputController,
+              decoration: const InputDecoration(labelText: 'Date (YYYY-MM-DD)'),
+            ),
+            TextField(
+              controller: _startTimeController,
+              decoration: const InputDecoration(labelText: 'Start Time (HH:mm)'),
+            ),
+            TextField(
+              controller: _endTimeController,
+              decoration: const InputDecoration(labelText: 'End Time (HH:mm)'),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: addTask,
+              child: const Text('Add Task'),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: showReportDialog,
+              child: const Text('Generate Report'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
+
+
+
 
 
 
