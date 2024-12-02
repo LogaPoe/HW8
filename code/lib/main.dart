@@ -77,6 +77,97 @@ class _TaskScreenState extends State<TaskScreen> {
     }
   }
 
+  Future<void> showSearchDialog() async {
+    final TextEditingController searchTagController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Search Tasks by Tag'),
+          content: TextField(
+            controller: searchTagController,
+            decoration: const InputDecoration(labelText: 'Enter Tag'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close the dialog
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop(searchTagController.text);
+              },
+              child: const Text('Search'),
+            ),
+          ],
+        );
+      },
+    ).then((tag) async {
+      if (tag != null && tag.isNotEmpty) {
+        await searchTasks(tag);
+      }
+    });
+  }
+
+  Future<void> searchTasks(String searchTag) async {
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('tasks')
+          .where('tags', isEqualTo: searchTag)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No tasks found with this tag')),
+        );
+        return;
+      }
+
+      showResultsDialog(querySnapshot.docs);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error searching tasks: $e')),
+      );
+    }
+  }
+
+  Future<void> showResultsDialog(List<QueryDocumentSnapshot> docs) async {
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Search Results'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: docs.length,
+              itemBuilder: (context, index) {
+                final doc = docs[index];
+                return ListTile(
+                  title: Text(doc['task']),
+                  subtitle: Text(
+                      'Date: ${doc['date']}\nStart: ${doc['startTime']} - End: ${doc['endTime']}'),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> showReportDialog() async {
     final TextEditingController startDateController = TextEditingController();
     final TextEditingController endDateController = TextEditingController();
@@ -113,7 +204,7 @@ class _TaskScreenState extends State<TaskScreen> {
                   'endDate': endDateController.text,
                 });
               },
-              child: const Text('Generate'),
+              child: const Text('Search'),
             ),
           ],
         );
@@ -122,8 +213,16 @@ class _TaskScreenState extends State<TaskScreen> {
       if (dates != null &&
           dates['startDate'].isNotEmpty &&
           dates['endDate'].isNotEmpty) {
-        final startDate = DateTime.parse(dates['startDate']);
-        final endDate = DateTime.parse(dates['endDate']);
+        final startDate = DateTime.tryParse(dates['startDate']);
+        final endDate = DateTime.tryParse(dates['endDate']);
+
+        if (startDate == null || endDate == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invalid date format')),
+          );
+          return;
+        }
+
         await generateReport(startDate, endDate);
       }
     });
@@ -152,39 +251,7 @@ class _TaskScreenState extends State<TaskScreen> {
     }
   }
 
-  Future<void> showResultsDialog(List<QueryDocumentSnapshot> docs) async {
-    await showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Report Results'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: docs.length,
-              itemBuilder: (context, index) {
-                final doc = docs[index];
-                return ListTile(
-                  title: Text(doc['task']),
-                  subtitle: Text(
-                      'Date: ${doc['date']}\nStart: ${doc['startTime']} - End: ${doc['endTime']}\nTags: ${doc['tags']}'),
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -223,6 +290,11 @@ class _TaskScreenState extends State<TaskScreen> {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
+              onPressed: showSearchDialog,
+              child: const Text('Search Tasks by Tag'),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
               onPressed: showReportDialog,
               child: const Text('Generate Report'),
             ),
@@ -232,6 +304,7 @@ class _TaskScreenState extends State<TaskScreen> {
     );
   }
 }
+
 
 
 
